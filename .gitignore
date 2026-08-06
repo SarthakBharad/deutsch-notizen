@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# LibreOffice lock files
+.~lock.*#
+
+Thumbs.db
+.DS_Store
+.streamlit/secrets.toml
