@@ -18,7 +18,10 @@ from notizen_app.render import Search, document_html, sheet_html
 NOTES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notizen")
 
 st.set_page_config(page_title="Deutsch Notizen", page_icon="ẞ", layout="wide")
-st.markdown(theme.css(), unsafe_allow_html=True)
+
+# The toggle's value is already in session state when the rerun starts, so the
+# stylesheet for this run can be chosen before anything is drawn.
+st.markdown(theme.css(dark=bool(st.session_state.get("dark", False))), unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------
@@ -43,6 +46,7 @@ def load_document(path: str, mtime: float):
 state = st.session_state
 state.setdefault("level", None)
 state.setdefault("note", None)
+state.setdefault("dark", False)
 
 
 def open_level(level: str) -> None:
@@ -60,57 +64,34 @@ grouped = library.by_level(notes)
 
 
 # --------------------------------------------------------------------------
-# screens
+# sidebar — present on every screen, so the chrome never shifts
 # --------------------------------------------------------------------------
 
 
-def start_screen() -> None:
-    st.markdown(
-        '<div class="masthead">'
-        '<div class="eyebrow">Meine Notizen</div>'
-        "<h1>Deutsch</h1>"
-        "<p>Pick a level to read what's in it. Everything comes straight from "
-        "the files in <code>notizen/</code>.</p>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
+def appearance() -> None:
+    st.divider()
+    st.toggle("Dark mode", key="dark")
 
-    if not grouped:
-        st.markdown(
-            '<div class="empty">No notes found yet. Put an .ods or .odt file in '
-            "the <b>notizen</b> folder, named like <b>A2_Grammatik.odt</b>, and "
-            "reload this page.</div>",
-            unsafe_allow_html=True,
+
+def home_sidebar() -> None:
+    with st.sidebar:
+        st.markdown('<div class="sidebar-brand">Deutsch Notizen</div>', unsafe_allow_html=True)
+        st.caption(
+            f"{len(notes)} {'Datei' if len(notes) == 1 else 'Dateien'} in notizen/"
+            if notes
+            else "No files in notizen/ yet"
         )
-        return
-
-    levels = list(grouped)
-    for start in range(0, len(levels), 3):
-        row = levels[start : start + 3]
-        for column, level in zip(st.columns(3), row):
-            items = grouped[level]
-            titles = " · ".join(n.title for n in items)
-            with column:
-                st.markdown(
-                    f'<div class="level-card"><div class="code">{level}</div>'
-                    f'<div class="meta">{len(items)} '
-                    f'{"Datei" if len(items) == 1 else "Dateien"}</div>'
-                    f'<div class="files">{titles}</div></div>',
-                    unsafe_allow_html=True,
-                )
-                st.button(
-                    f"Open {level}",
-                    key=f"open-{level}",
-                    use_container_width=True,
-                    on_click=open_level,
-                    args=(level,),
-                )
+        appearance()
 
 
-def sidebar(level: str, items: list[library.Note]) -> tuple[library.Note, Search]:
+def note_sidebar(level: str, items: list[library.Note]) -> tuple[library.Note, Search]:
     with st.sidebar:
         st.button("← All levels", on_click=go_home, use_container_width=True)
-        st.markdown(f"## {level}")
+        st.markdown(
+            '<div class="sidebar-brand">Deutsch Notizen</div>'
+            f'<div class="sidebar-level">{level}</div>',
+            unsafe_allow_html=True,
+        )
 
         titles = [n.title for n in items]
         if state.note not in titles:
@@ -129,12 +110,58 @@ def sidebar(level: str, items: list[library.Note]) -> tuple[library.Note, Search
             st.cache_data.clear()
             st.rerun()
 
+        appearance()
+
     return note, Search(query)
 
 
+# --------------------------------------------------------------------------
+# screens
+# --------------------------------------------------------------------------
+
+
+def start_screen() -> None:
+    home_sidebar()
+    st.markdown(
+        '<div class="masthead">'
+        '<div class="eyebrow">Meine Notizen</div>'
+        "<h1>Deutsch</h1>"
+        "<p>Pick a level to read what's in it. Everything comes straight from "
+        "the files in <code>notizen/</code>.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if not grouped:
+        empty_state(
+            "No notes found yet. Put an .ods or .odt file in the "
+            "<b>notizen</b> folder, named like <b>A2 Grammatik.odt</b>, and reload."
+        )
+        return
+
+    levels = list(grouped)
+    for start in range(0, len(levels), 3):
+        for column, level in zip(st.columns(3), levels[start : start + 3]):
+            items = grouped[level]
+            with column:
+                st.markdown(
+                    f'<div class="level-card"><div class="code">{level}</div>'
+                    f'<div class="meta">{len(items)} '
+                    f'{"Datei" if len(items) == 1 else "Dateien"}</div>'
+                    f'<div class="files">{" · ".join(n.title for n in items)}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                st.button(
+                    f"Open {level}",
+                    key=f"open-{level}",
+                    use_container_width=True,
+                    on_click=open_level,
+                    args=(level,),
+                )
+
+
 def note_screen(level: str) -> None:
-    items = grouped[level]
-    note, search = sidebar(level, items)
+    note, search = note_sidebar(level, grouped[level])
 
     st.markdown(
         f'<div class="note-kicker">{level} · '
@@ -155,6 +182,7 @@ def render_sheet(note: library.Note, search: Search) -> None:
     except Exception as error:  # a half-saved or non-ODF file
         unreadable(note, error)
         return
+
     if not sheets:
         empty_state("This file has no sheets yet.")
         return
@@ -164,29 +192,36 @@ def render_sheet(note: library.Note, search: Search) -> None:
     if search.active:
         # Searching looks across every sheet at once; tabs would hide the hits.
         total = 0
+        rendered: list[tuple[str, str, int]] = []
         for name, groups in sheets:
             body, count = sheet_html(groups, search)
-            if not count:
-                continue
-            total += count
+            if count:
+                rendered.append((name, body, count))
+                total += count
+
+        if not total:
+            count_line(f"No match for “{search.query}”")
+            empty_state("Nothing in this file matches. Try a shorter word — the "
+                        "search matches anywhere inside a cell.")
+            return
+
+        count_line(f"{total} matching {'row' if total == 1 else 'rows'} "
+                   f"in {len(rendered)} {'sheet' if len(rendered) == 1 else 'sheets'}")
+        for name, body, _ in rendered:
             st.markdown(f'<div class="doc"><h2>{name}</h2></div>', unsafe_allow_html=True)
             st.markdown(body, unsafe_allow_html=True)
-        if not total:
-            empty_state(f"Nothing matches “{search.query}” in this file.")
-        else:
-            st.caption(f"{total} matching {'row' if total == 1 else 'rows'}")
         return
 
     for tab, (name, groups) in zip(st.tabs(names), sheets):
         with tab:
             body, count = sheet_html(groups, search)
             if body:
-                st.markdown(f'<p class="count">{count} rows</p>', unsafe_allow_html=True)
+                count_line(f"{count} {'row' if count == 1 else 'rows'}")
                 st.markdown(body, unsafe_allow_html=True)
             else:
                 empty_state(
-                    f"“{name}” is empty. Add rows in LibreOffice, save, then "
-                    "hit Reload from disk."
+                    f"<b>{name}</b> is empty. Add rows in LibreOffice, save, "
+                    "then hit Reload from disk."
                 )
 
 
@@ -196,6 +231,7 @@ def render_document(note: library.Note, search: Search) -> None:
     except Exception as error:
         unreadable(note, error)
         return
+
     body, count = document_html(blocks, search, skip_title=f"{note.level} {note.title}")
 
     if not blocks or body == '<div class="doc"></div>':
@@ -204,11 +240,24 @@ def render_document(note: library.Note, search: Search) -> None:
             "then hit Reload from disk."
         )
         return
-    if search.active and not count:
-        empty_state(f"Nothing matches “{search.query}” in this document.")
-        return
+
+    if search.active:
+        if not count:
+            count_line(f"No match for “{search.query}”")
+            empty_state("Nothing in this document matches.")
+            return
+        count_line(f"{count} matching {'passage' if count == 1 else 'passages'}")
 
     st.markdown(body, unsafe_allow_html=True)
+
+
+# --------------------------------------------------------------------------
+# small shared pieces
+# --------------------------------------------------------------------------
+
+
+def count_line(text: str) -> None:
+    st.markdown(f'<p class="count">{text}</p>', unsafe_allow_html=True)
 
 
 def empty_state(message: str) -> None:
@@ -217,11 +266,10 @@ def empty_state(message: str) -> None:
 
 def unreadable(note: library.Note, error: Exception) -> None:
     """One bad file should cost you that file, not the whole app."""
-    name = os.path.basename(note.path)
     empty_state(
-        f"<b>{name}</b> could not be read. Open it in LibreOffice and save it "
-        "again as ODF; if it was mid-save when it was committed, the copy in "
-        "the repo is incomplete. Every other note still works."
+        f"<b>{os.path.basename(note.path)}</b> could not be read. Open it in "
+        "LibreOffice and save it again as ODF; if it was mid-save when it was "
+        "committed, the copy in the repo is incomplete. Every other note still works."
     )
     st.caption(f"{type(error).__name__}: {error}")
 

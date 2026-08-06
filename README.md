@@ -57,8 +57,13 @@ Bold and italic survive.
   band above each hit, so results stay in context.
 - **The article is tinted** in vocabulary entries (`**der** Anfang`), and the
   perfect auxiliary is muted (`*hat* aufgemacht`) — gender and haben/sein are
-  the two things a list like this exists to drill. Only lowercase entries are
-  tinted, so example sentences starting with "Das…" are left alone.
+  the two things a list like this exists to drill. Two guards keep it quiet:
+  the entry must be lowercase, so a sentence starting "Das…" is left alone,
+  and a word must follow, so the Artikel declension table — whose cells *are*
+  the articles — stays plain.
+- **Dark mode** toggles in the sidebar. It is the same three colours seen from
+  the other end: the light mode's text colour becomes the dark surface, and
+  the accent is lifted to `#CE7A60` so it still carries on a dark ground.
 
 ## Layout
 
@@ -74,6 +79,20 @@ notizen_app/
 .streamlit/config.toml     Streamlit theme colours
 ```
 
-Palette: background `#E9EDF0`, text `#202A35`, accent `#B65C45`.
-Type: Newsreader for headings, IBM Plex Sans for text, IBM Plex Mono for
-labels.
+Palette: background `#E9EDF0`, text `#202A35`, accent `#B65C45` (dark mode in
+`theme.py`, derived from the same three). Type: Newsreader for headings,
+IBM Plex Sans for text, IBM Plex Mono for labels.
+
+## Pin Streamlit
+
+`theme.py` styles some of Streamlit's own widgets by their DOM hooks, and those
+change between releases — tabs moved from BaseWeb to react-aria in 1.61, which
+silently broke the old tab rules. Pin the version you tested against:
+
+```bash
+pip freeze | grep "^streamlit=="   # put that exact line in requirements.txt
+```
+
+If a future upgrade makes some widget look wrong, the tab rules in `theme.py`
+show the pattern: cover both the old and new hooks, and use `!important`,
+since Streamlit injects its own styles after this stylesheet.

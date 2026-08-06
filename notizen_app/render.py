@@ -21,10 +21,16 @@ from .readers.odf import Block, Cell, Span
 
 FOLD = str.maketrans({"ä": "a", "ö": "o", "ü": "u", "ß": "s", "é": "e", "è": "e"})
 
-# Deliberately case-sensitive: a dictionary entry starts "der Anfang", while a
-# capitalised "Das Buch liegt..." is a sentence, where tinting would be noise.
-ARTICLE = re.compile(r"^(der|die|das|den|dem|des|ein|eine|einen|einem|einer|kein|keine)\b")
-AUXILIARY = re.compile(r"^(hat|ist|haben|sind)\b")
+# Both are deliberately narrow. Case-sensitive, because a dictionary entry
+# starts "der Anfang" while a capitalised "Das Buch liegt..." is a sentence.
+# And a word must follow, so a declension table — whose cells ARE the articles —
+# stays plain instead of turning entirely accent-coloured.
+_WORD = r"\s+(?=[A-Za-zÄÖÜäöüß])"
+ARTICLE = re.compile(
+    r"^(der|die|das|den|dem|des|ein|eine|einen|einem|einer|eines"
+    r"|kein|keine|keinen|keinem|keiner)" + _WORD
+)
+AUXILIARY = re.compile(r"^(hat|ist|haben|sind)" + _WORD)
 
 
 def fold(text: str) -> str:
@@ -80,13 +86,16 @@ def cell_html(cell: Cell, search: Search) -> str:
         return ""
 
     marked = search.mark(text)
-    prefix = ARTICLE.match(text) or AUXILIARY.match(text)
+
+    prefix, klass = ARTICLE.match(text), "art"
+    if prefix is None:
+        prefix, klass = AUXILIARY.match(text), "aux"
+
     # Only tint the prefix when the search did not already highlight it,
     # so the two emphases never fight over the same characters.
-    if prefix and not marked.startswith("<mark"):
-        word = prefix.group(0)
-        klass = "art" if ARTICLE.match(text) else "aux"
-        marked = f'<span class="{klass}">{html.escape(word)}</span>' + marked[len(html.escape(word)) :]
+    if prefix is not None and not marked.startswith("<mark"):
+        word = html.escape(prefix.group(1))
+        marked = f'<span class="{klass}">{word}</span>' + marked[len(word) :]
 
     return marked.replace("\n", "<br>")
 
