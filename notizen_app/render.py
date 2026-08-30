@@ -17,7 +17,7 @@ import re
 import unicodedata
 
 from .layout import SheetGroup, TableBlock, band_text, is_band
-from .readers.odf import Block, Cell, Span
+from .readers.odf import Block, Cell, ListItem, Span
 
 FOLD = str.maketrans({"ä": "a", "ö": "o", "ü": "u", "ß": "s", "é": "e", "è": "e"})
 
@@ -197,6 +197,58 @@ def spans_html(spans: list[Span], search: Search) -> str:
     return "".join(out)
 
 
+def list_html(items: list[ListItem], search: Search) -> str:
+    """Render a flat depth-tagged list as nested <ol>/<ul>.
+
+    Nested levels get class="beispiel": in these notes an indented sub-item is
+    always an example sentence for the rule above it, and it should read as one.
+    """
+    parts: list[str] = []
+    open_lists: list[tuple[int, bool]] = []  # (depth, ordered)
+
+    def close_one() -> None:
+        _, ordered = open_lists.pop()
+        parts.append("</li></ol>" if ordered else "</li></ul>")
+
+    for item in items:
+        while open_lists and open_lists[-1][0] > item.depth:
+            close_one()
+
+        if open_lists and open_lists[-1][0] == item.depth:
+            parts.append("</li>")
+        else:
+            tag = "ol" if item.ordered else "ul"
+            klass = ' class="beispiel"' if item.depth > 1 else ""
+            parts.append(f"<{tag}{klass}>")
+            open_lists.append((item.depth, item.ordered))
+
+        parts.append(f"<li>{spans_html(item.spans, search)}")
+
+    while open_lists:
+        close_one()
+    return "".join(parts)
+
+
+def _filter_list(items: list[ListItem], search: Search) -> list[ListItem]:
+    """Keep matching items, plus the parent line each one sits under."""
+    if not search.active:
+        return items
+
+    kept: list[ListItem] = []
+    for index, item in enumerate(items):
+        if not search.matches_any([s.text for s in item.spans]):
+            continue
+        # walk back to the nearest shallower item so an example sentence
+        # never appears without the rule it belongs to
+        for parent in reversed(items[:index]):
+            if parent.depth < item.depth:
+                if parent not in kept:
+                    kept.append(parent)
+                break
+        kept.append(item)
+    return kept
+
+
 def document_html(blocks: list[Block], search: Search, skip_title: str = "") -> tuple[str, int]:
     """Render an .odt. Search filters to matching blocks and their heading."""
     parts: list[str] = []
@@ -222,11 +274,11 @@ def document_html(blocks: list[Block], search: Search, skip_title: str = "") -> 
                 continue
             markup, hits = body, count
         elif block.kind == "list":
-            items = [i for i in block.items if search.matches_any([s.text for s in i])]
+            items = _filter_list(block.items, search)
             if not items:
                 continue
-            markup = "<ul>" + "".join(f"<li>{spans_html(i, search)}</li>" for i in items) + "</ul>"
-            hits = len(items)
+            markup = list_html(items, search)
+            hits = sum(1 for i in items if search.matches_any([s.text for s in i.spans]))
         else:
             text = "".join(s.text for s in block.spans)
             if not search.matches(text):

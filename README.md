@@ -55,6 +55,13 @@ before its bytes are read, so a large scan isn't pulled into memory on every
 rerun.
 
 **Documents (`.odt`)** — headings, paragraphs, lists and tables in order.
+Numbered and bulleted lists keep their own markers, and nesting is preserved:
+LibreOffice splits one visual list into several `<text:list>` elements
+whenever the indent level changes, so those are stitched back together — which
+is also what makes the numbering run 1..n rather than restarting at each
+example sentence. An indented sub-item is rendered as a Beispielsatz: italic,
+quieter, hung off a rule in the accent colour. Search keeps the parent rule
+visible above any example sentence that matches.
 Calc tables embedded in a Writer document (the `Beispiel Sätze` table in
 `A2_Grammatik.odt`) are pulled out and rendered as real tables, not images.
 Bold and italic survive.

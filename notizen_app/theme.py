@@ -156,7 +156,23 @@ div[data-testid="stElementContainer"]:has(.level-card) + div[data-testid="stElem
 .doc h3 {{ font-family: var(--serif); font-size: 1.25rem; font-weight: 600; margin: 1.5rem 0 .5rem; color: var(--ink); }}
 .doc h4 {{ font-family: var(--sans); font-size: 1rem; font-weight: 600; margin: 1.2rem 0 .4rem; color: var(--ink); }}
 .doc p {{ margin: .45rem 0; line-height: 1.65; color: var(--ink); }}
-.doc ul {{ margin: .4rem 0 .8rem 1.1rem; line-height: 1.65; color: var(--ink); }}
+.doc ul, .doc ol {{ margin: .5rem 0 .8rem; padding-left: 1.5rem; line-height: 1.65; color: var(--ink); }}
+.doc li {{ margin: .2rem 0; padding-left: .2rem; }}
+.doc li::marker {{ color: var(--muted); font-family: var(--mono); font-size: .85em; }}
+
+/* An indented sub-item is always an example sentence for the rule above it,
+   so it is set apart rather than just pushed right: italic, quieter, and
+   hung off a rule in the accent colour. */
+.doc ul.beispiel, .doc ol.beispiel {{
+  margin: .35rem 0 .6rem 0; padding-left: 1.6rem;
+  border-left: 2px solid var(--accent-edge); list-style: none;
+}}
+.doc .beispiel li {{
+  font-style: italic; color: var(--muted); padding-left: 0; margin: .25rem 0;
+}}
+.doc .beispiel li::marker {{ content: none; }}
+.doc .beispiel strong {{ font-style: normal; }}
+.doc .beispiel mark.hit {{ font-style: normal; }}
 .doc strong {{ font-weight: 600; color: var(--accent-deep); }}
 
 /* ---------- tables ---------- */

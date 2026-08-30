@@ -67,12 +67,21 @@ class Span:
 
 
 @dataclass
+class ListItem:
+    """One line of a list, with how deeply it is nested."""
+
+    spans: list[Span]
+    depth: int = 1  # 1 = top level
+    ordered: bool = False
+
+
+@dataclass
 class Block:
     """One element in the flow of a text document."""
 
     kind: str  # "heading" | "paragraph" | "list" | "table"
     spans: list[Span] = field(default_factory=list)
-    items: list[list[Span]] = field(default_factory=list)  # for "list"
+    items: list[ListItem] = field(default_factory=list)  # for "list"
     grid: Grid | None = None  # for "table"
     level: int = 1  # for "heading"
 
@@ -154,6 +163,26 @@ def _collect_styles(root: ET.Element) -> tuple[dict, dict]:
             para_styles[name] = info
 
     return text_styles, para_styles
+
+
+def _collect_list_styles(root: ET.Element) -> dict[str, dict[int, bool]]:
+    """{list style name: {level: is_ordered}} — numbered vs bulleted."""
+    styles: dict[str, dict[int, bool]] = {}
+    for ls in root.iter(q("text", "list-style")):
+        name = ls.get(q("style", "name"))
+        if not name:
+            continue
+        levels: dict[int, bool] = {}
+        for child in ls:
+            if not child.tag.startswith(q("text", "list-level-style-")):
+                continue
+            try:
+                level = int(child.get(q("text", "level"), 1))
+            except ValueError:
+                continue
+            levels[level] = child.tag == q("text", "list-level-style-number")
+        styles[name] = levels
+    return styles
 
 
 def _heading_level(style_name: str, para_styles: dict) -> int | None:
@@ -246,6 +275,7 @@ def read_document(path: str) -> list[Block]:
     with zipfile.ZipFile(path) as zf:
         root = ET.fromstring(zf.read("content.xml"))
         text_styles, para_styles = _collect_styles(root)
+        list_styles = _collect_list_styles(root)
 
         body = root.find(q("office", "body"))
         text_body = body.find(q("office", "text")) if body is not None else None
@@ -254,11 +284,63 @@ def read_document(path: str) -> list[Block]:
 
         blocks: list[Block] = []
         for el in text_body:
-            blocks.extend(_document_block(el, zf, text_styles, para_styles))
-        return blocks
+            blocks.extend(_document_block(el, zf, text_styles, para_styles, list_styles))
+        return _merge_lists(blocks)
 
 
-def _document_block(el, zf, text_styles, para_styles) -> list[Block]:
+def _merge_lists(blocks: list[Block]) -> list[Block]:
+    """Join lists that were only split apart by nesting or continued numbering.
+
+    LibreOffice ends one <text:list> and starts another whenever the level
+    changes, and ties them back together with text:continue-list. On the page
+    they are one list, so they are merged back into one here — which is also
+    what makes the numbering run 1..n instead of restarting at each break.
+    """
+    merged: list[Block] = []
+    for block in blocks:
+        if block.kind == "list" and merged and merged[-1].kind == "list":
+            merged[-1].items.extend(block.items)
+        else:
+            merged.append(block)
+    return merged
+
+
+def _list_items(
+    el: ET.Element,
+    text_styles: dict,
+    list_styles: dict,
+    style_name: str,
+    depth: int = 1,
+) -> list[ListItem]:
+    """Flatten a list, and any list nested inside it, keeping the depth.
+
+    LibreOffice writes an indented sub-list as a list whose only item is
+    another list, with no text of its own — so this has to recurse rather
+    than read one level of list-item paragraphs.
+    """
+    style_name = el.get(q("text", "style-name")) or style_name
+    ordered = list_styles.get(style_name, {}).get(depth, False)
+
+    items: list[ListItem] = []
+    for item in el.findall(q("text", "list-item")):
+        spans: list[Span] = []
+        for child in item:
+            if child.tag == q("text", "p"):
+                spans.extend(_inline_spans(child, text_styles))
+            elif child.tag == q("text", "list"):
+                if _joined(spans):
+                    items.append(ListItem(spans, depth, ordered))
+                    spans = []
+                items.extend(
+                    _list_items(child, text_styles, list_styles, style_name, depth + 1)
+                )
+        if _joined(spans):
+            items.append(ListItem(spans, depth, ordered))
+
+    return items
+
+
+def _document_block(el, zf, text_styles, para_styles, list_styles) -> list[Block]:
     tag = el.tag
 
     if tag == q("text", "h"):
@@ -285,13 +367,7 @@ def _document_block(el, zf, text_styles, para_styles) -> list[Block]:
         return [Block("paragraph", spans=spans)]
 
     if tag == q("text", "list"):
-        items = []
-        for item in el.findall(q("text", "list-item")):
-            spans: list[Span] = []
-            for p in item.findall(q("text", "p")):
-                spans.extend(_inline_spans(p, text_styles))
-            if _joined(spans):
-                items.append(spans)
+        items = _list_items(el, text_styles, list_styles, el.get(q("text", "style-name"), ""))
         return [Block("list", items=items)] if items else []
 
     if tag == q("table", "table"):
