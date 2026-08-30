@@ -11,8 +11,13 @@ The rules, in order:
 2. Split into column groups on runs of 2+ blank columns.
 3. Split each group into blocks on runs of 2+ blank rows.
 4. A row with exactly one filled cell is a band (a heading inside the table).
-5. The first non-band row of the first block is the header. Later blocks
-   reuse it only if their column count matches.
+5. A row whose filled cells are mostly bold is a header row. A block is split
+   again at every one of these, so a sheet that stacks Akkusativ over Dativ
+   in one grid becomes two tables, each under its own header.
+6. Otherwise the first non-band row of a block is taken as its header.
+7. A header cell that spans rows is not a header at all — it is a label for
+   the block beside it (the merged "Akkusativ"), so it moves into the body
+   and keeps its rowspan there.
 
 A single blank row or column is treated as breathing room, not a divide,
 because that is how these sheets actually use them.
@@ -38,6 +43,22 @@ class SheetGroup:
     """One column group of a sheet: a stack of tables sharing a layout."""
 
     blocks: list[TableBlock] = field(default_factory=list)
+
+
+# A header row has to be mostly bold, not entirely bold: a column added to a
+# sheet later often misses the formatting of the ones beside it. Half is high
+# enough to stay clear of a data row carrying a bold label down its side
+# (Artikel's "Bestimmt", das Wetter's "Maskulin"), which run nearer a third.
+HEADER_BOLD_SHARE = 0.5
+
+
+def is_header_row(row: list[Cell]) -> bool:
+    """Mostly bold, with at least two bold cells to go on."""
+    filled = [c for c in row if not c.empty]
+    if len(filled) < 3:
+        return False
+    bold = sum(1 for c in filled if c.bold)
+    return bold >= 2 and bold >= HEADER_BOLD_SHARE * len(filled)
 
 
 def is_band(row: list[Cell]) -> bool:
@@ -70,29 +91,34 @@ def structure(grid: Grid) -> list[SheetGroup]:
         group_header: list[Cell] | None = None  # each column group has its own
 
         for chunk in _row_blocks(sub):
-            chunk = _trim_cols(chunk)
-            if not chunk:
-                continue
+            for piece in _split_on_headers(chunk):
+                piece = _trim_cols(piece)
+                if not piece:
+                    continue
 
-            block_header: list[Cell] | None = None
-            body = chunk
-            first_data = next((i for i, r in enumerate(chunk) if not is_band(r)), None)
+                block_header: list[Cell] | None = None
+                body = piece
+                first_data = next((i for i, r in enumerate(piece) if not is_band(r)), None)
 
-            if first_data is not None:
-                candidate = chunk[first_data]
-                takes_row = group_header is None or _same_text(candidate, group_header)
-                if takes_row:
-                    block_header = candidate
-                    body = chunk[:first_data] + chunk[first_data + 1 :]
-                    if group_header is None:
-                        group_header = candidate
-                elif group_header is not None and len(candidate) == len(group_header):
-                    # Same shape, different content: repeat the header so the
-                    # columns stay legible without eating a row of notes.
-                    block_header = group_header
+                if first_data is not None:
+                    candidate = piece[first_data]
+                    takes_row = (
+                        group_header is None
+                        or is_header_row(candidate)
+                        or _same_text(candidate, group_header)
+                    )
+                    if takes_row:
+                        rest = piece[:first_data] + piece[first_data + 1 :]
+                        block_header, body = _lift_header(candidate, rest)
+                        if group_header is None:
+                            group_header = block_header
+                    elif group_header is not None and len(candidate) == len(group_header):
+                        # Same shape, different content: repeat the header so
+                        # the columns stay legible without eating a row.
+                        block_header = group_header
 
-            if any(not c.empty for row in body for c in row):
-                group.blocks.append(TableBlock(header=block_header, rows=body))
+                if any(not c.empty for row in body for c in row):
+                    group.blocks.append(TableBlock(header=block_header, rows=body))
 
         if group.blocks:
             groups.append(group)
@@ -101,6 +127,59 @@ def structure(grid: Grid) -> list[SheetGroup]:
 
 
 # --------------------------------------------------------------------------
+
+
+def _split_on_headers(rows: list[list[Cell]]) -> list[list[list[Cell]]]:
+    """Cut a chunk before each interior all-bold row.
+
+    If most of the chunk is bold the sheet is simply set in bold throughout,
+    and the signal means nothing — so it is ignored rather than turning every
+    row into its own table.
+    """
+    marks = [i for i, r in enumerate(rows) if is_header_row(r)]
+    if not marks or len(marks) > max(1, len(rows) // 2):
+        return [rows]
+
+    pieces, start = [], 0
+    for mark in marks:
+        # a band sitting just above a header ("Teil - 1", "Länder") introduces
+        # the table below it, so the cut goes above the band, not between them
+        cut = mark
+        while cut > 0 and _blank_row(rows[cut - 1]):
+            cut -= 1
+        while cut > 0 and is_band(rows[cut - 1]):
+            cut -= 1
+        if cut > start:
+            pieces.append(rows[start:cut])
+            start = cut
+    pieces.append(rows[start:])
+    return [p for p in pieces if any(not c.empty for row in p for c in row)]
+
+
+def _lift_header(
+    candidate: list[Cell], body: list[list[Cell]]
+) -> tuple[list[Cell], list[list[Cell]]]:
+    """Take a header row, leaving behind any cell that spans into the body.
+
+    A merged label like "Akkusativ" sits in the same row as the column
+    headings, because that is where a vertical merge puts its text. It is not
+    a heading for its column, so it is pushed down into the first body row
+    with one row of its span used up.
+    """
+    header = [Cell(c.text, c.colspan, 1, c.covered, c.bold) for c in candidate]
+    if not body:
+        return header, body
+
+    body = [list(row) for row in body]
+    for index, cell in enumerate(candidate):
+        if cell.rowspan <= 1 or cell.empty:
+            continue
+        header[index] = Cell(bold=cell.bold)
+        if index < len(body[0]):
+            body[0][index] = Cell(
+                cell.text, cell.colspan, min(cell.rowspan - 1, len(body)), False, cell.bold
+            )
+    return header, body
 
 
 def _rectangular(rows: list[list[Cell]]) -> list[list[Cell]]:

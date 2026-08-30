@@ -193,6 +193,16 @@ table.grid td {{
 table.grid tr:last-child td {{ border-bottom: none; }}
 table.grid tbody tr:hover td {{ background: var(--shade-hover); }}
 table.grid td.lead {{ font-weight: 500; }}
+
+/* a vertically merged label down the side of a block (Akkusativ / Dativ):
+   it names the whole block, so it reads like a header turned on its side */
+table.grid td.rowlabel {{
+  background: var(--shade); border-right: 1px solid var(--line);
+  color: var(--muted); font-family: var(--mono); font-size: .7rem;
+  font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
+  text-align: center; vertical-align: middle; white-space: nowrap; width: 1%;
+}}
+table.grid tbody tr:hover td.rowlabel {{ background: var(--shade); }}
 table.grid tr.spacer td, table.grid tr.spacer:hover td {{
   padding: .25rem; background: transparent; border-bottom: none;
 }}

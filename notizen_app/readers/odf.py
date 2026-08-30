@@ -43,6 +43,7 @@ class Cell:
     colspan: int = 1
     rowspan: int = 1
     covered: bool = False  # swallowed by a merge above/left of it
+    bold: bool = False
 
     @property
     def empty(self) -> bool:
@@ -141,6 +142,19 @@ def _plain_text(el: ET.Element) -> str:
 # --------------------------------------------------------------------------
 
 
+def _collect_cell_styles(root: ET.Element) -> dict[str, bool]:
+    """{cell style name: is bold} — used to spot header rows in a sheet."""
+    bold: dict[str, bool] = {}
+    for style in root.iter(q("style", "style")):
+        if style.get(q("style", "family")) != "table-cell":
+            continue
+        name = style.get(q("style", "name"))
+        props = style.find(q("style", "text-properties"))
+        if name:
+            bold[name] = props is not None and props.get(q("fo", "font-weight")) == "bold"
+    return bold
+
+
 def _collect_styles(root: ET.Element) -> tuple[dict, dict]:
     """Return (text_styles, paragraph_styles) keyed by style name."""
     text_styles: dict[str, dict] = {}
@@ -208,7 +222,8 @@ def _heading_level(style_name: str, para_styles: dict) -> int | None:
 # --------------------------------------------------------------------------
 
 
-def _parse_table(el: ET.Element) -> Grid:
+def _parse_table(el: ET.Element, bold_styles: dict[str, bool] | None = None) -> Grid:
+    bold_styles = bold_styles or {}
     name = el.get(q("table", "name"), "")
     rows: list[list[Cell]] = []
     all_rows = list(el.iter(q("table", "table-row")))
@@ -222,6 +237,7 @@ def _parse_table(el: ET.Element) -> Grid:
             if cell_el.tag != q("table", "table-cell") and not covered:
                 continue
             text = _plain_text(cell_el)
+            bold = bold_styles.get(cell_el.get(q("table", "style-name")), False)
             repeat = int(cell_el.get(q("table", "number-columns-repeated"), 1))
             if not text.strip():
                 # LibreOffice pads every row out to the width of the sheet with
@@ -235,10 +251,11 @@ def _parse_table(el: ET.Element) -> Grid:
                     colspan=int(cell_el.get(q("table", "number-columns-spanned"), 1)),
                     rowspan=int(cell_el.get(q("table", "number-rows-spanned"), 1)),
                     covered=covered,
+                    bold=bold,
                 )
             )
             for _ in range(repeat - 1):
-                cells.append(Cell(text=text, covered=covered))
+                cells.append(Cell(text=text, covered=covered, bold=bold))
 
         while cells and cells[-1].empty:
             cells.pop()
@@ -250,7 +267,9 @@ def _parse_table(el: ET.Element) -> Grid:
             # a deliberate gap between two tables still reads as a gap.
             row_repeat = 1 if row_el is last_row else min(row_repeat, MAX_BLANK_ROWS)
         for _ in range(min(row_repeat, MAX_REPEAT)):
-            rows.append([Cell(c.text, c.colspan, c.rowspan, c.covered) for c in cells])
+            rows.append(
+                [Cell(c.text, c.colspan, c.rowspan, c.covered, c.bold) for c in cells]
+            )
 
     while rows and not any(not c.empty for c in rows[-1]):
         rows.pop()
@@ -267,7 +286,8 @@ def read_spreadsheet(path: str) -> list[Grid]:
     """Every sheet in an .ods, in document order."""
     with zipfile.ZipFile(path) as zf:
         root = ET.fromstring(zf.read("content.xml"))
-    return [_parse_table(t) for t in root.iter(q("table", "table"))]
+    bold_styles = _collect_cell_styles(root)
+    return [_parse_table(t, bold_styles) for t in root.iter(q("table", "table"))]
 
 
 def read_document(path: str) -> list[Block]:

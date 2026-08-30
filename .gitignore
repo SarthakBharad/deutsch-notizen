@@ -4,10 +4,9 @@ __pycache__/
 .venv/
 venv/
 
-# Textbook PDFs. These are third-party copyrighted books, so they are kept
-# out of the repo by default — see the README. Delete this line if you have
-# decided the PDFs in notizen/ are yours to publish.
-notizen/*.pdf
+# Textbook PDFs stay out of the repo — they are third-party copyrighted books
+# and this repo is published. The app still reads them locally; see the README.
+notizen/Bücher/*.pdf
 
 # LibreOffice lock files (created while a note is open for editing)
 .~lock.*#

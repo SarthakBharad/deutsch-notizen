@@ -106,10 +106,18 @@ def cell_html(cell: Cell, search: Search) -> str:
 
 
 def filter_block(block: TableBlock, search: Search) -> TableBlock | None:
-    """Keep rows that match, plus the band each surviving row sits under."""
+    """Keep rows that match, plus the band each surviving row sits under.
+
+    Dropping rows invalidates any vertical merge, so spans are flattened here
+    and a block label (the merged "Akkusativ") is carried onto the first row
+    that survives — otherwise the results lose the case they belong to.
+    """
     if not search.active:
         return block
 
+    label = next(
+        (c for row in block.rows for c in row if c.rowspan > 1 and not c.empty), None
+    )
     kept: list[list[Cell]] = []
     pending_band: list[Cell] | None = None
 
@@ -119,13 +127,23 @@ def filter_block(block: TableBlock, search: Search) -> TableBlock | None:
             continue
         if all(c.empty for c in row):
             continue
-        if search.matches_any([c.text for c in row]):
-            if pending_band is not None:
-                kept.append(pending_band)
-                pending_band = None
-            kept.append(row)
+        if not search.matches_any([c.text for c in row]):
+            continue
+        if pending_band is not None:
+            kept.append(pending_band)
+            pending_band = None
+        kept.append([Cell(c.text, c.colspan, 1, False, c.bold) for c in row])
 
-    return TableBlock(header=block.header, rows=kept) if kept else None
+    if not kept:
+        return None
+
+    if label is not None:
+        for row in kept:
+            if row and row[0].empty:
+                row[0] = Cell(label.text, 1, 1, False, label.bold)
+            break
+
+    return TableBlock(header=block.header, rows=kept)
 
 
 def table_html(block: TableBlock, search: Search) -> str:
@@ -140,25 +158,57 @@ def table_html(block: TableBlock, search: Search) -> str:
         parts.append(f"<thead><tr>{cells}</tr></thead>")
 
     parts.append("<tbody>")
-    for row in block.rows:
+
+    # Merges are tracked against a grid rather than trusting each cell's own
+    # flag. A "covered" cell whose parent merge lives outside this block —
+    # cut off when the sheet was split, or lifted out with the header — has
+    # nothing spanning it any more, and silently skipping it would pull the
+    # rest of the row left and invent a column at the far end.
+    occupied: dict[int, int] = {}
+
+    for index, row in enumerate(block.rows):
         if all(c.empty for c in row):
             parts.append(f'<tr class="spacer"><td colspan="{width}"></td></tr>')
-        elif is_band(row):
+            occupied = {}
+            continue
+        if is_band(row):
             parts.append(
                 f'<tr class="band"><td colspan="{width}">{search.mark(band_text(row))}</td></tr>'
             )
-        else:
-            tds = []
-            for i, cell in enumerate(_pad(row, width)):
-                if cell.covered:
-                    continue
-                attrs = ' class="lead"' if i == 0 else ""
-                if cell.colspan > 1:
-                    attrs += f' colspan="{cell.colspan}"'
-                if cell.rowspan > 1:
-                    attrs += f' rowspan="{cell.rowspan}"'
-                tds.append(f"<td{attrs}>{cell_html(cell, search)}</td>")
-            parts.append("<tr>" + "".join(tds) + "</tr>")
+            occupied = {}
+            continue
+
+        remaining = len(block.rows) - index
+        padded = _pad(row, width)
+        tds = []
+
+        for column in range(width):
+            if occupied.get(column, 0) > 0:
+                occupied[column] -= 1
+                continue
+
+            cell = padded[column]
+            if cell.covered:
+                tds.append("<td></td>")  # orphaned by a split; hold the column
+                continue
+
+            classes = ["lead"] if column == 0 else []
+            attrs = ""
+            colspan = max(cell.colspan, 1)
+            if colspan > 1:
+                attrs += f' colspan="{colspan}"'
+            rowspan = min(cell.rowspan, remaining)
+            if rowspan > 1:
+                attrs += f' rowspan="{rowspan}"'
+                classes.append("rowlabel")
+                for offset in range(colspan):
+                    occupied[column + offset] = rowspan - 1
+            if classes:
+                attrs = f' class="{" ".join(classes)}"' + attrs
+            tds.append(f"<td{attrs}>{cell_html(cell, search)}</td>")
+
+        parts.append("<tr>" + "".join(tds) + "</tr>")
+
     parts.append("</tbody></table></div>")
     return "".join(parts)
 
