@@ -1,4 +1,8 @@
+<img src="assets/icon.png" width="72" align="left" alt="" hspace="14" vspace="2">
+
 # Deutsch Notizen
+
+<br clear="left">
 
 A reader for my German notes. I keep the notes themselves in LibreOffice —
 a cheatsheet and a grammar document per level — and this app reads those files
@@ -192,6 +196,7 @@ Streamlit injects its own styles after this stylesheet.
 
 ```
 app.py                     screens and routing
+assets/                    app icon (also the browser favicon)
 notizen/                   the notes themselves — the app's only data source
 notizen_app/
   library.py               finds files, reads level and title from the name
@@ -206,6 +211,12 @@ requirements.txt
 Palette: background `#E9EDF0`, text `#202A35`, accent `#B65C45`. The dark mode
 is derived from the same three in `theme.py`. Type: Newsreader for headings,
 IBM Plex Sans for text, IBM Plex Mono for labels.
+
+The icon is an **ä** on the accent colour — the umlaut being the most
+recognisable thing in German typography, and two dots over a bowl holding a
+distinct silhouette down to 16px where a drawn object would turn to mush. It is
+`assets/icon.png`, passed to `page_icon`, so it doubles as the browser favicon;
+`assets/favicon.ico` is there for hosting anywhere that wants a real `.ico`.
 
 ---
 

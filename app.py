@@ -15,9 +15,16 @@ from notizen_app.layout import structure
 from notizen_app.readers import odf
 from notizen_app.render import Search, document_html, sheet_html
 
-NOTES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notizen")
+ROOT = os.path.dirname(os.path.abspath(__file__))
+NOTES_DIR = os.path.join(ROOT, "notizen")
+ICON = os.path.join(ROOT, "assets", "icon.png")
 
-st.set_page_config(page_title="Deutsch Notizen", page_icon="ẞ", layout="wide")
+st.set_page_config(
+    page_title="Deutsch Notizen",
+    # the drawn icon when it's there, the letter itself if the file went missing
+    page_icon=ICON if os.path.exists(ICON) else "ä",
+    layout="wide",
+)
 
 # The toggle's value is already in session state when the rerun starts, so the
 # stylesheet for this run can be chosen before anything is drawn.
