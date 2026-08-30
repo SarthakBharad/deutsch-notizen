@@ -1,1 +1,3 @@
-streamlit>=1.36
+# The [pdf] extra installs the viewer component used to read books in the
+# page. Without it downloads still work, the embed just falls back to a note.
+streamlit[pdf]>=1.49

@@ -1,11 +1,20 @@
+# Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 
-# LibreOffice lock files
+# Textbook PDFs. These are third-party copyrighted books, so they are kept
+# out of the repo by default — see the README. Delete this line if you have
+# decided the PDFs in notizen/ are yours to publish.
+notizen/*.pdf
+
+# LibreOffice lock files (created while a note is open for editing)
 .~lock.*#
 
+# OS
 Thumbs.db
 .DS_Store
+
+# Streamlit
 .streamlit/secrets.toml

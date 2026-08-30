@@ -261,5 +261,22 @@ hr, [data-testid="stDivider"] hr {{ border-color: var(--line) !important; backgr
 .stTabs [data-baseweb="tab-border"] {{ background: var(--line); }}
 
 [data-testid="stTooltipHoverTarget"] svg {{ color: var(--muted); }}
+
+/* download button — the one call to action, so it carries the accent */
+.stDownloadButton button {{
+  font-family: var(--sans); font-size: .9rem;
+  background: var(--accent) !important; color: #FFF !important;
+  border: 1px solid var(--accent) !important; border-radius: var(--radius);
+}}
+.stDownloadButton button:hover {{ background: var(--accent-deep) !important; border-color: var(--accent-deep) !important; }}
+.stDownloadButton button p {{ color: #FFF !important; }}
+
+/* the embedded PDF viewer sits on the page, so give it the same frame
+   as a table rather than the browser's default white slab */
+[data-testid="stPdf"], [data-testid="stPdfContainer"] {{
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--paper); overflow: hidden; margin-top: 1rem;
+}}
+[data-testid="stPdf"] iframe, [data-testid="stPdf"] embed {{ border: none; }}
 </style>
 """

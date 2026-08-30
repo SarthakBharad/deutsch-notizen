@@ -16,7 +16,7 @@ library.
 
 ## Add notes
 
-Drop `.ods` or `.odt` files into `notizen/`, named `<Level>_<Title>`:
+Drop `.ods`, `.odt` or `.pdf` files into `notizen/`, named `<Level>_<Title>`:
 
 ```
 notizen/
@@ -24,6 +24,7 @@ notizen/
   A2_Grammatik.odt            ->  A2 · Grammatik
   B1_Wortschatz_Extra.ods     ->  B1 · Wortschatz Extra
   C1_Konjunktiv.odt           ->  C1 · Konjunktiv
+  A2 Menschen Kursbuch.pdf    ->  A2 · Menschen Kursbuch (a book)
 ```
 
 Levels A1–C2 get their own card on the start screen, in order. Anything that
@@ -44,6 +45,14 @@ the tables it was drawn as:
 | 1 blank row or column | kept as spacing |
 | a row with one filled cell (`Lektion – 1`) | a band across the table |
 | the first full row | the header, repeated on later tables of the same width |
+
+**PDFs** — treated as books rather than notes: there is nothing useful to
+re-render in a scanned textbook. A book gets a download button and, where the
+viewer component is installed, reads in the page. Books sort after notes in
+the sidebar and are marked `· PDF`. Search doesn't apply to them, so the
+search box is hidden while one is open. Anything over 25 MB asks for a click
+before its bytes are read, so a large scan isn't pulled into memory on every
+rerun.
 
 **Documents (`.odt`)** — headings, paragraphs, lists and tables in order.
 Calc tables embedded in a Writer document (the `Beispiel Sätze` table in
@@ -82,6 +91,22 @@ notizen_app/
 Palette: background `#E9EDF0`, text `#202A35`, accent `#B65C45` (dark mode in
 `theme.py`, derived from the same three). Type: Newsreader for headings,
 IBM Plex Sans for text, IBM Plex Mono for labels.
+
+## Before you publish the PDFs
+
+`.gitignore` excludes `notizen/*.pdf` by default. Course textbooks are
+copyrighted by their publisher, and a public repo or a public Streamlit Cloud
+app is redistribution — being able to download a scan from elsewhere doesn't
+make it yours to hand out. Keeping them local costs nothing: the app reads them
+straight from `notizen/`.
+
+Two practical limits point the same way. GitHub rejects any file over 100 MB
+outright and warns above 50 MB, and Streamlit Cloud pulls the whole repo on
+every deploy, so a few hundred megabytes of scans makes deploys slow and can
+exhaust the free tier's memory.
+
+If you decide otherwise, delete the `notizen/*.pdf` line — but do it
+deliberately, not by accident.
 
 ## Pin Streamlit
 
